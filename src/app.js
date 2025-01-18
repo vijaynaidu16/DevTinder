@@ -10,7 +10,6 @@ app.post("/signup", async (req, res) => {
   try {
     const userData = req.body;
     console.log(userData);
-
     const user = new userModel(userData);
     await user.save();
     res.send(`User added successfully`);
