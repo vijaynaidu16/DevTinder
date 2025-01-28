@@ -1,15 +1,22 @@
-const adminAuth = (req, res, next) => {
-  const token = "abc";
-  const isAuth = token === "abc";
-  if (!isAuth)  res.status(404);
-  next();
-};
+const jwt = require("jsonwebtoken");
+const { userModel } = require("../model/userSchema");
 
-const userAuth = (req, res, next) => {
-    const token = "ac";
-    const isAuth = token === "abc";
-    if (!isAuth) res.send("error").status(404);
+const userAuth = async (req, res, next) => {
+  try {
+    const { token } = req.cookies;
+    if (!token) {
+      throw new Error("Invalid Token");
+    }
+    const decodedMessage = await jwt.verify(token, "secret");
+    const { _id } = decodedMessage;
+    const user = await userModel.findById(_id);
+    if (!user) {
+      throw new Error("Invalid User");
+    }
+    req.user = user;
     next();
-  };
-
-module.exports = {adminAuth, userAuth}
+  } catch (error) {
+    res.status(400).send("Error: " + error.message);
+  }
+};
+module.exports = { userAuth };

@@ -1,27 +1,87 @@
 const express = require("express");
 const { connectDB } = require("./config/database");
 const { userModel } = require("./model/userSchema");
+const { validateSignUpData } = require("./utils/validation");
+const bcrypt = require("bcrypt");
+const cookieParser = require("cookie-parser");
+const jwt = require("jsonwebtoken");
+const { userAuth } = require("./middlewares/auth");
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.use(cookieParser());
 
 app.post("/signup", async (req, res) => {
   try {
-    const userData = req.body;
-    console.log(userData);
-    const user = new userModel(userData);
+    validateSignUpData(req);
+    const { firstName, lastName, emailId, password } = req.body;
+    const passwordHash = await bcrypt.hash(password, 10);
+    // console.log(passwordHash);
+    const user = new userModel({
+      firstName,
+      lastName,
+      emailId,
+      password: passwordHash,
+    });
     await user.save();
     res.send(`User added successfully`);
   } catch (err) {
-    console.error("Error adding user:", err);
-    res.status(500).send("Error adding user to the database" + err);
+    res.status(500).send("ERROR: " + err);
   }
 });
 
+app.post("/login", async (req, res) => {
+  try {
+    const { emailId, password } = req.body;
+    const user = await userModel.findOne({ emailId: emailId });
+    if (!user) {
+      throw new Error("EmailId is not present");
+    }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new Error("Invalid Credentails");
+    }
+    // Create a token
+    // Add the token to cookie and the reponse back to the user
+    const token = await jwt.sign({ _id: user._id }, "secret");
+    // console.log(token);
+    res.cookie("token", token);
+    res.send("Password is correct");
+  } catch (error) {
+    res.status(400).send("ERROR: " + error.message);
+  }
+});
+
+app.get("/profile", userAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    res.send(user);
+  } catch (error) {
+    res.status(400).send("ERROR: " + error.message);
+  }
+});
+
+app.post("/sendConnectionRequest", userAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    console.log(user.firstName);
+    res.status(200).send(user.firstName + " sent the connection request");
+  } catch (error) {
+    res.status(400).send("Error: " + error.message);
+  }
+});
+
+app.post("/logout", userAuth, (req, res) => {
+  try {
+    
+  } catch (error) {
+    res.status(400).send("Logout unsucessfull" + error.message);
+  }
+})
+
 app.get("/user", async (req, res) => {
   const userEmail = req.body.emailId;
-  console.log(userEmail);
   try {
     const users = await userModel.findOne({ emailId: userEmail });
     if (!users) {
@@ -69,13 +129,27 @@ app.patch("/user", async (req, res) => {
   const userId = req.body.userId;
   const data = req.body;
   try {
+    const ALLOWED_UPDATES = [
+      "userId",
+      "photoUrl",
+      "about",
+      "gender",
+      "age",
+      "skills",
+    ];
+    const isUpdatedAllowed = Object.keys(data).every((k) =>
+      ALLOWED_UPDATES.includes(k)
+    );
+    if (!isUpdatedAllowed) {
+      throw new Error("Update not allowed");
+    }
     await userModel.findByIdAndUpdate({ _id: userId }, data, {
       runValidators: true,
       returnDocuement: "after",
     });
     res.status(200).send("Patched the data");
   } catch (error) {
-    res.status(404).send("something went wrong" + error.message);
+    res.status(404).send("something went wrong: " + error.message);
   }
 });
 
